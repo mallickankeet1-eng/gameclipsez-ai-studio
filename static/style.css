@@ -3,3 +3,5 @@
 
 .or{text-align:center;color:#8188a3;font-size:11px;font-weight:700;letter-spacing:1px;margin:18px 0}
 input[type=file]{padding:12px;border-style:dashed;cursor:pointer}
+
+.extra-grid{margin-top:12px}.or{margin:22px 0}.creator{color:#9aa4c4}@media(max-width:650px){.extra-grid{grid-template-columns:1fr}.grid{gap:12px}}

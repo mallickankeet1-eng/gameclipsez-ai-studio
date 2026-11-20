@@ -75,10 +75,28 @@ def render_job(job_id, source, is_upload, mode, count, length, aspect, framing, 
             title=video.stem
             subtitle_files=list(folder.glob("*.vtt"))
         else:
-            opts={"format":"bestvideo[height<=1080]+bestaudio/best[height<=1080]","merge_output_format":"mp4",
-                  "outtmpl":str(folder/"source.%(ext)s"),"writesubtitles":True,"writeautomaticsub":True,
-                  "subtitleslangs":["en","hi"],"subtitlesformat":"vtt/best","noplaylist":True}
-            with yt_dlp.YoutubeDL(opts) as y: info=y.extract_info(source,download=True)
+            # YouTube increasingly requires a JavaScript runtime for player challenges.
+            # Deno is installed by render.yaml; try several supported clients for resilience.
+            opts={"format":"bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+                  "merge_output_format":"mp4",
+                  "outtmpl":str(folder/"source.%(ext)s"),
+                  "writesubtitles":True,"writeautomaticsub":True,
+                  "subtitleslangs":["en","hi"],"subtitlesformat":"vtt/best","noplaylist":True,
+                  "js_runtimes":{"deno":{}},
+                  "extractor_args":{"youtube":{"player_client":["web","mweb","tv"]}},
+                  "retries":3,"fragment_retries":3,"socket_timeout":30}
+            try:
+                with yt_dlp.YoutubeDL(opts) as y: info=y.extract_info(source,download=True)
+            except Exception as first_error:
+                # Retry with yt-dlp's default client selection before reporting the failure.
+                opts.pop("extractor_args",None)
+                try:
+                    with yt_dlp.YoutubeDL(opts) as y: info=y.extract_info(source,download=True)
+                except Exception as second_error:
+                    msg=str(second_error)
+                    if "player response" in msg.lower() or "confirm you're not a bot" in msg.lower() or "403" in msg:
+                        raise Exception("YouTube is blocking automated downloads from this free hosting server. Try uploading the video file instead, or retry later. This is a YouTube/hosting restriction, not a problem with your video.")
+                    raise
             vids=[p for p in folder.glob("source.*") if p.suffix.lower() in ALLOWED_VIDEO]
             if not vids: raise Exception("YouTube could not provide this video. Download your own video and use the Upload Video option instead.")
             video=vids[0]; duration=float(info.get("duration") or 0); title=info.get("title","Video")

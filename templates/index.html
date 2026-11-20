@@ -2,13 +2,14 @@
 <title>Gameclipsez AI Studio</title><link rel="stylesheet" href="/static/style.css"></head>
 <body><main class="wrap">
 <header><div class="logo">G</div><div><h1>GAMECLIPSEZ <span>AI STUDIO</span></h1><p>Turn long videos into Shorts & Reels</p><small class="creator">Created by Ankeet Mallick</small></div><div class="pill">WEB EDITION</div></header>
-<section class="hero"><div class="eyebrow">YOUR CLIPS. YOUR STYLE.</div><h2>One link. <em>Multiple shorts.</em></h2><p>Choose a content mode and let the studio find promising moments, format vertical clips and prepare posting ideas.</p></section>
-<section class="panel"><label for="url">PASTE YOUTUBE VIDEO LINK</label><input id="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="url">
+<section class="hero"><div class="eyebrow">YOUR CLIPS. YOUR STYLE.</div><h2>One video. <em>Multiple shorts.</em></h2><p>Upload a video from your phone or computer, choose a content mode, and create vertical clips for Shorts & Reels.</p></section>
+<section class="panel"><label for="video">UPLOAD A VIDEO (RECOMMENDED · UP TO 500 MB)</label><input id="video" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,video/x-msvideo,.m4v">
+<div class="or">— OR PASTE A PUBLIC YOUTUBE LINK —</div><label for="url">YOUTUBE VIDEO LINK</label><input id="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="url">
 <div class="grid"><div><label>CONTENT MODE</label><select id="mode"><option>Gaming</option><option>Normal / Auto</option><option>Funny / Meme</option><option>Podcast</option><option>Education</option><option>Sports</option></select></div>
 <div><label>NUMBER OF CLIPS</label><select id="count"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>
 <div><label>CLIP LENGTH</label><select id="length"><option value="20">20 sec</option><option selected value="35">35 sec</option><option value="45">45 sec</option><option value="60">60 sec</option></select></div></div>
-<button id="go">✦ ANALYSE VIDEO & CREATE CLIPS</button><div id="status" class="status">Ready when you are.</div><div id="results"></div>
+<button id="go">✦ ANALYSE VIDEO & CREATE CLIPS</button><div id="status" class="status">Choose a video file or paste a YouTube link.</div><div id="results"></div>
 </section>
-<section class="features"><article><b>01 / FIND MOMENTS</b><h3>Highlight detection</h3><p>Uses available subtitles and topic-specific keywords to rank moments.</p></article><article><b>02 / FORMAT</b><h3>Vertical 9:16</h3><p>Exports MP4 clips sized for Shorts and Reels.</p></article><article><b>03 / PUBLISH</b><h3>Posting ideas</h3><p>Get title options, captions and hashtags to review before posting.</p></article></section>
-<footer>Gameclipsez AI Studio · Created by Ankeet Mallick · Free starter edition · Process only videos you own or have permission to use.</footer>
+<section class="features"><article><b>01 / FIND MOMENTS</b><h3>Highlight detection</h3><p>Uses available subtitles and topic-specific keywords to rank moments. Without subtitles, it selects evenly spaced sections.</p></article><article><b>02 / FORMAT</b><h3>Vertical 9:16</h3><p>Exports MP4 clips sized for Shorts and Reels.</p></article><article><b>03 / PUBLISH</b><h3>Posting ideas</h3><p>Get title options, captions and hashtags to review before posting.</p></article></section>
+<footer>Gameclipsez AI Studio · Created by Ankeet Mallick · Free starter edition · Upload only videos you own or have permission to use. Uploads are temporary and may be lost when the free service restarts.</footer>
 </main><script src="/static/app.js"></script></body></html>

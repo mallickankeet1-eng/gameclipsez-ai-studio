@@ -7,10 +7,10 @@ btn.addEventListener("click",async()=>{
  try{
   let r;
   if(file){
-   const form=new FormData();form.append("video",file);form.append("mode",$("mode").value);form.append("count",$("count").value);form.append("length",$("length").value);
+   const form=new FormData();form.append("video",file);form.append("mode",$("mode").value);form.append("count",$("count").value);form.append("length",$("length").value);form.append("aspect",$("aspect").value);form.append("framing",$("framing").value);form.append("captions",$("captions").value);form.append("caption_style",$("caption_style").value);
    r=await fetch("/upload",{method:"POST",body:form});
   }else{
-   r=await fetch("/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,mode:$("mode").value,count:$("count").value,length:$("length").value})});
+   r=await fetch("/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,mode:$("mode").value,count:$("count").value,length:$("length").value,aspect:$("aspect").value,framing:$("framing").value,captions:$("captions").value,caption_style:$("caption_style").value})});
   }
   const d=await r.json();if(!r.ok)throw Error(d.error||"Could not start job");
   const id=d.job_id;

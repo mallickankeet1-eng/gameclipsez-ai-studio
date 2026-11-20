@@ -44,6 +44,11 @@ def score(text, mode):
       "Education":["how","why","tip","learn","step","important","because","example"],
       "Podcast":["think","believe","story","experience","actually","opinion"],
       "Sports":["goal","score","match","team","player","champion","final"],
+      "Reaction":["wow","what","seriously","shocked","react","unbelievable"],
+      "Tutorial":["how","step","first","next","tutorial","guide","setup"],
+      "Vlog":["today","morning","travel","went","visit","day","experience"],
+      "Storytelling":["story","once","remember","happened","because","then","finally"],
+      "Music":["song","music","beat","sing","dance","track","listen"],
       "Normal / Auto":["amazing","best","important","never","always","actually","really"]
     }.get(mode, [])
     return min(len(t.split()),50)*.1 + sum(2 for w in vocab if w in t) + len(re.findall(r'[.!?]',text))*1.5
@@ -59,7 +64,7 @@ def video_duration(path):
     h,m,s=match.groups()
     return int(h)*3600+int(m)*60+float(s)
 
-def render_job(job_id, source, is_upload, mode, count, length):
+def render_job(job_id, source, is_upload, mode, count, length, aspect, framing, captions, caption_style):
     folder=WORK/job_id
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -109,10 +114,18 @@ def render_job(job_id, source, is_upload, mode, count, length):
                     lines += [str(n),f"{stamp(max(0,a-start))} --> {stamp(min(end-start,b-start))}",txt,""]; n+=1
                 srt.write_text("\n".join(lines),encoding="utf-8")
             out=folder/f"short_{i:02}.mp4"
-            vf="scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
-            if srt.exists() and srt.stat().st_size:
-                sp=str(srt).replace("\\","/").replace(":","\\:")
-                vf+=f",subtitles='{sp}':force_style='FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=100'"
+            dimensions={"9:16":(1080,1920),"1:1":(1080,1080),"16:9":(1920,1080)}
+            width,height=dimensions.get(aspect,(1080,1920))
+            if framing=="Fit whole video":
+                vf=f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"
+            else:
+                vf=f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
+            if captions and srt.exists() and srt.stat().st_size:
+                sp=str(srt).replace("\\\\","/").replace(":","\\\\:")
+                style="FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=100"
+                if caption_style=="Bold / Large":
+                    style="FontName=Arial,FontSize=28,Bold=1,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=4,Alignment=2,MarginV=110"
+                vf+=f",subtitles='{sp}':force_style='{style}'"
             cmd=[FFMPEG,"-y","-ss",str(start),"-i",str(video),"-t",str(end-start),"-vf",vf,"-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)]
             res=subprocess.run(cmd,capture_output=True,text=True)
             if res.returncode: raise Exception("Video rendering failed: "+res.stderr[-500:])
@@ -131,10 +144,10 @@ def render_job(job_id, source, is_upload, mode, count, length):
     except Exception as e:
         with LOCK: JOBS[job_id].update(status="error",message=str(e))
 
-def start_job(source, is_upload, mode, count, length):
+def start_job(source, is_upload, mode, count, length, aspect, framing, captions, caption_style):
     jid=uuid.uuid4().hex[:12]
     with LOCK: JOBS[jid]={"status":"queued","message":"Starting…","ideas":[]}
-    threading.Thread(target=render_job,args=(jid,source,is_upload,mode,count,length),daemon=True).start()
+    threading.Thread(target=render_job,args=(jid,source,is_upload,mode,count,length,aspect,framing,captions,caption_style),daemon=True).start()
     return jid
 
 @app.get("/")
@@ -148,11 +161,16 @@ def create():
     if not re.match(r"https?://(www\.)?(youtube\.com|youtu\.be)/",url):
         return jsonify(error="Please paste a valid YouTube URL, or upload a video file instead."),400
     mode=data.get("mode","Gaming")
+    aspect=data.get("aspect","9:16")
+    framing=data.get("framing","Fill / Crop")
+    captions=data.get("captions","on")=="on"
+    caption_style=data.get("caption_style","Classic")
+    if aspect not in ("9:16","1:1","16:9"): return jsonify(error="Choose a valid output format."),400
     try:
         count=max(1,min(10,int(data.get("count",5))))
         length=max(15,min(90,int(data.get("length",35))))
     except Exception: return jsonify(error="Clip count or length is invalid."),400
-    return jsonify(job_id=start_job(url,False,mode,count,length))
+    return jsonify(job_id=start_job(url,False,mode,count,length,aspect,framing,captions,caption_style))
 
 @app.post("/upload")
 def upload():
@@ -162,6 +180,11 @@ def upload():
     ext=Path(filename).suffix.lower()
     if ext not in ALLOWED_VIDEO: return jsonify(error="Use MP4, MOV, MKV, WEBM, AVI or M4V video."),400
     mode=request.form.get("mode","Gaming")
+    aspect=request.form.get("aspect","9:16")
+    framing=request.form.get("framing","Fill / Crop")
+    captions=request.form.get("captions","on")=="on"
+    caption_style=request.form.get("caption_style","Classic")
+    if aspect not in ("9:16","1:1","16:9"): return jsonify(error="Choose a valid output format."),400
     try:
         count=max(1,min(10,int(request.form.get("count",5))))
         length=max(15,min(90,int(request.form.get("length",35))))
@@ -172,7 +195,7 @@ def upload():
     saved=folder/("uploaded_video"+ext)
     file.save(saved)
     with LOCK: JOBS[jid]={"status":"queued","message":"Upload received. Starting…","ideas":[]}
-    threading.Thread(target=render_job,args=(jid,str(saved),True,mode,count,length),daemon=True).start()
+    threading.Thread(target=render_job,args=(jid,str(saved),True,mode,count,length,aspect,framing,captions,caption_style),daemon=True).start()
     return jsonify(job_id=jid)
 
 @app.get("/status/<jid>")

@@ -3,5 +3,5 @@ services:
     name: gameclipsez-ai-studio
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 900
+    buildCommand: curl -fsSL https://deno.land/install.sh | sh && pip install -r requirements.txt
+    startCommand: PATH="$HOME/.deno/bin:$PATH" gunicorn app:app --bind 0.0.0.0:$PORT --timeout 900

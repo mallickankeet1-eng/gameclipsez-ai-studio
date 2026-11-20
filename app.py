@@ -1,15 +1,22 @@
 import os, re, json, uuid, threading, subprocess, zipfile
 from pathlib import Path
+from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, send_file, abort
 import yt_dlp, imageio_ffmpeg
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB upload limit
 BASE = Path(__file__).resolve().parent
 WORK = BASE / "jobs"
 WORK.mkdir(exist_ok=True)
 JOBS = {}
 LOCK = threading.Lock()
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+ALLOWED_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+@app.errorhandler(413)
+def too_large(_):
+    return jsonify(error="That video is larger than the 500 MB upload limit. Try a shorter or smaller MP4."), 413
 
 def parse_vtt(path):
     raw = Path(path).read_text(encoding="utf-8", errors="ignore")
@@ -45,21 +52,34 @@ def stamp(x):
     z=int(x); ms=int((x-z)*1000)
     return f"{z//3600:02}:{(z%3600)//60:02}:{z%60:02},{ms:03}"
 
-def render_job(job_id, url, mode, count, length):
+def video_duration(path):
+    result=subprocess.run([FFMPEG,"-i",str(path)],capture_output=True,text=True)
+    match=re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",result.stderr)
+    if not match: raise Exception("Could not read this video's duration. Please try an MP4 file.")
+    h,m,s=match.groups()
+    return int(h)*3600+int(m)*60+float(s)
+
+def render_job(job_id, source, is_upload, mode, count, length):
     folder=WORK/job_id
     folder.mkdir(parents=True, exist_ok=True)
     try:
-        with LOCK: JOBS[job_id]["status"]="downloading"; JOBS[job_id]["message"]="Getting video and subtitles…"
-        opts={"format":"bestvideo[height<=1080]+bestaudio/best[height<=1080]","merge_output_format":"mp4",
-              "outtmpl":str(folder/"source.%(ext)s"),"writesubtitles":True,"writeautomaticsub":True,
-              "subtitleslangs":["en","hi"],"subtitlesformat":"vtt/best","noplaylist":True}
-        with yt_dlp.YoutubeDL(opts) as y: info=y.extract_info(url,download=True)
-        vids=[p for p in folder.glob("source.*") if p.suffix.lower() in [".mp4",".mkv",".webm",".mov"]]
-        if not vids: raise Exception("Could not download video. Try a public video or upload a local file in a future version.")
-        video=vids[0]; duration=float(info.get("duration") or 0)
+        with LOCK: JOBS[job_id]["status"]="downloading"; JOBS[job_id]["message"]="Preparing your video…"
+        if is_upload:
+            video=Path(source)
+            duration=video_duration(video)
+            title=video.stem
+            subtitle_files=list(folder.glob("*.vtt"))
+        else:
+            opts={"format":"bestvideo[height<=1080]+bestaudio/best[height<=1080]","merge_output_format":"mp4",
+                  "outtmpl":str(folder/"source.%(ext)s"),"writesubtitles":True,"writeautomaticsub":True,
+                  "subtitleslangs":["en","hi"],"subtitlesformat":"vtt/best","noplaylist":True}
+            with yt_dlp.YoutubeDL(opts) as y: info=y.extract_info(source,download=True)
+            vids=[p for p in folder.glob("source.*") if p.suffix.lower() in ALLOWED_VIDEO]
+            if not vids: raise Exception("YouTube could not provide this video. Download your own video and use the Upload Video option instead.")
+            video=vids[0]; duration=float(info.get("duration") or 0); title=info.get("title","Video")
+            subtitle_files=list(folder.glob("*.vtt"))
         if not duration: raise Exception("Could not read video duration.")
-        vtts=list(folder.glob("*.vtt"))
-        cues=parse_vtt(vtts[0]) if vtts else []
+        cues=parse_vtt(subtitle_files[0]) if subtitle_files else []
         candidates=[]
         if cues:
             for start in range(0,max(1,int(duration-length)+1),max(4,length//3)):
@@ -69,14 +89,13 @@ def render_job(job_id, url, mode, count, length):
             candidates.sort(reverse=True)
             chosen=[]
             for c in candidates:
-                if all(abs(c[1]-x[1])>=length*.75 for x in chosen):
-                    chosen.append(c)
+                if all(abs(c[1]-x[1])>=length*.75 for x in chosen): chosen.append(c)
                 if len(chosen)>=count: break
             chosen.sort(key=lambda x:x[1])
         else:
-            L=min(length,max(15,int(duration/max(count,1))))
-            chosen=[(0,i*duration/count,min(duration,i*duration/count+L),"") for i in range(count) if i*duration/count<duration]
-        if not chosen: raise Exception("No suitable clip sections found.")
+            clip_len=min(length,max(15,int(duration/max(count,1))))
+            chosen=[(0,i*duration/count,min(duration,i*duration/count+clip_len),"") for i in range(count) if i*duration/count<duration]
+        if not chosen: raise Exception("No suitable clip sections found. Try a longer video.")
         ideas=[]
         for i,(_,start,end,transcript) in enumerate(chosen,1):
             with LOCK:
@@ -97,21 +116,26 @@ def render_job(job_id, url, mode, count, length):
             cmd=[FFMPEG,"-y","-ss",str(start),"-i",str(video),"-t",str(end-start),"-vf",vf,"-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)]
             res=subprocess.run(cmd,capture_output=True,text=True)
             if res.returncode: raise Exception("Video rendering failed: "+res.stderr[-500:])
-            words=(transcript or info.get("title","Video")).split()
+            words=(transcript or title or "Video").split()
             hook=" ".join(words[:9]).strip(" .,!?:;")
             mode_tag=re.sub(r'\W+','',mode.lower())
             ideas.append({"clip":out.name,"start":round(start),"end":round(end),
-                "titles":[f"{hook} 😱", "You NEED to see this! 🔥", "Wait for it… 👀"],
+                "titles":[f"{hook} 😱","You NEED to see this! 🔥","Wait for it… 👀"],
                 "caption":f"{hook} #shorts #reels #{mode_tag}"})
         (folder/"POSTING_IDEAS.json").write_text(json.dumps(ideas,ensure_ascii=False,indent=2),encoding="utf-8")
         zipname=folder/"Gameclipsez_Clips.zip"
         with zipfile.ZipFile(zipname,"w",zipfile.ZIP_DEFLATED) as z:
             for p in folder.glob("short_*.mp4"): z.write(p,p.name)
             z.write(folder/"POSTING_IDEAS.json","POSTING_IDEAS.json")
-        with LOCK:
-            JOBS[job_id].update(status="done",message="Your clips are ready!",ideas=ideas,download=f"/download/{job_id}")
+        with LOCK: JOBS[job_id].update(status="done",message="Your clips are ready!",ideas=ideas,download=f"/download/{job_id}")
     except Exception as e:
         with LOCK: JOBS[job_id].update(status="error",message=str(e))
+
+def start_job(source, is_upload, mode, count, length):
+    jid=uuid.uuid4().hex[:12]
+    with LOCK: JOBS[jid]={"status":"queued","message":"Starting…","ideas":[]}
+    threading.Thread(target=render_job,args=(jid,source,is_upload,mode,count,length),daemon=True).start()
+    return jid
 
 @app.get("/")
 def home():
@@ -122,15 +146,33 @@ def create():
     data=request.get_json(force=True)
     url=(data.get("url") or "").strip()
     if not re.match(r"https?://(www\.)?(youtube\.com|youtu\.be)/",url):
-        return jsonify(error="Please paste a valid public YouTube URL."),400
+        return jsonify(error="Please paste a valid YouTube URL, or upload a video file instead."),400
     mode=data.get("mode","Gaming")
     try:
         count=max(1,min(10,int(data.get("count",5))))
         length=max(15,min(90,int(data.get("length",35))))
     except Exception: return jsonify(error="Clip count or length is invalid."),400
+    return jsonify(job_id=start_job(url,False,mode,count,length))
+
+@app.post("/upload")
+def upload():
+    file=request.files.get("video")
+    if not file or not file.filename: return jsonify(error="Choose a video file first."),400
+    filename=secure_filename(file.filename)
+    ext=Path(filename).suffix.lower()
+    if ext not in ALLOWED_VIDEO: return jsonify(error="Use MP4, MOV, MKV, WEBM, AVI or M4V video."),400
+    mode=request.form.get("mode","Gaming")
+    try:
+        count=max(1,min(10,int(request.form.get("count",5))))
+        length=max(15,min(90,int(request.form.get("length",35))))
+    except Exception: return jsonify(error="Clip count or length is invalid."),400
     jid=uuid.uuid4().hex[:12]
-    with LOCK: JOBS[jid]={"status":"queued","message":"Starting…","ideas":[]}
-    threading.Thread(target=render_job,args=(jid,url,mode,count,length),daemon=True).start()
+    folder=WORK/jid
+    folder.mkdir(parents=True,exist_ok=True)
+    saved=folder/("uploaded_video"+ext)
+    file.save(saved)
+    with LOCK: JOBS[jid]={"status":"queued","message":"Upload received. Starting…","ideas":[]}
+    threading.Thread(target=render_job,args=(jid,str(saved),True,mode,count,length),daemon=True).start()
     return jsonify(job_id=jid)
 
 @app.get("/status/<jid>")

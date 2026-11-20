@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gameclipsez")
 app = Flask(__name__)
 # Render's free instance has only 512 MB RAM; keep uploads modest.
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024
 BASE = Path(__file__).resolve().parent
 WORK = Path(os.environ.get("GAMECLIPSEZ_WORKDIR", "/tmp/gameclipsez-jobs"))
 WORK.mkdir(parents=True, exist_ok=True)
@@ -19,7 +19,7 @@ ALLOWED_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
 @app.errorhandler(413)
 def too_large(_):
-    return jsonify(error="This video is over the 50 MB free-server limit. Compress it or upload a shorter video."), 413
+    return jsonify(error="This video is over the 150 MB free-server limit. Compress it or upload a shorter video."), 413
 
 @app.errorhandler(500)
 def server_error(_):
@@ -234,7 +234,7 @@ def upload():
     try: file.save(saved)
     except Exception:
         log.exception("Upload save failed")
-        return jsonify(error="The upload could not be saved. Try a smaller MP4 (under 50 MB)."),500
+        return jsonify(error="The upload could not be saved. Try a smaller MP4 (under 150 MB)."),500
     with LOCK: JOBS[jid]={"status":"queued","message":"Upload received. Starting…","ideas":[]}
     threading.Thread(target=render_job,args=(jid,str(saved),True,*opts),daemon=True).start()
     return jsonify(job_id=jid)

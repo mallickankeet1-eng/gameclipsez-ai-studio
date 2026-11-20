@@ -1,4 +1,4 @@
-import os, re, json, uuid, threading, subprocess, zipfile, logging, traceback
+import os, re, json, uuid, threading, subprocess, zipfile, logging, traceback, shutil
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, send_file, abort
@@ -8,18 +8,18 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gameclipsez")
 app = Flask(__name__)
 # Render's free instance has only 512 MB RAM; keep uploads modest.
-app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 BASE = Path(__file__).resolve().parent
 WORK = Path(os.environ.get("GAMECLIPSEZ_WORKDIR", "/tmp/gameclipsez-jobs"))
 WORK.mkdir(parents=True, exist_ok=True)
 JOBS = {}
 LOCK = threading.Lock()
-FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+FFMPEG = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
 ALLOWED_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
 @app.errorhandler(413)
 def too_large(_):
-    return jsonify(error="This video is over the 150 MB limit for the free server. Compress it or upload a shorter video."), 413
+    return jsonify(error="This video is over the 50 MB free-server limit. Compress it or upload a shorter video."), 413
 
 @app.errorhandler(500)
 def server_error(_):
@@ -168,7 +168,9 @@ def render_job(job_id, source, is_upload, mode, count, length, aspect, framing, 
             res=subprocess.run(cmd,capture_output=True,text=True,timeout=600)
             if res.returncode or not out.exists() or out.stat().st_size==0:
                 log.error("FFmpeg failed: %s",res.stderr[-3000:])
-                raise Exception("Video conversion failed. Please try an MP4 (H.264) file, shorter clips, or a smaller video.")
+                detail=(res.stderr or "").strip().splitlines()
+                detail=" | ".join(detail[-5:])[-900:]
+                raise Exception("FFmpeg could not process this video. "+(detail or "Try an MP4 (H.264/AAC) file under 50 MB."))
             words=(transcript or title or "Video").split()
             hook=" ".join(words[:9]).strip(" .,!?:;")
             mode_tag=re.sub(r'\W+','',mode.lower())
@@ -232,7 +234,7 @@ def upload():
     try: file.save(saved)
     except Exception:
         log.exception("Upload save failed")
-        return jsonify(error="The upload could not be saved. Try a smaller MP4 (under 150 MB)."),500
+        return jsonify(error="The upload could not be saved. Try a smaller MP4 (under 50 MB)."),500
     with LOCK: JOBS[jid]={"status":"queued","message":"Upload received. Starting…","ideas":[]}
     threading.Thread(target=render_job,args=(jid,str(saved),True,*opts),daemon=True).start()
     return jsonify(job_id=jid)

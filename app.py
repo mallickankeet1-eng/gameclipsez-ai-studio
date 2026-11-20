@@ -121,7 +121,7 @@ def render_job(job_id, source, is_upload, mode, count, length, aspect, framing, 
             else:
                 vf=f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
             if captions and srt.exists() and srt.stat().st_size:
-                sp=str(srt).replace("\\\\","/").replace(":","\\\\:")
+                sp=str(srt)
                 style="FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=100"
                 if caption_style=="Bold / Large":
                     style="FontName=Arial,FontSize=28,Bold=1,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=4,Alignment=2,MarginV=110"

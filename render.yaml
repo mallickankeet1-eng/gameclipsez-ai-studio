@@ -3,5 +3,5 @@ services:
     name: gameclipsez-ai-studio
     runtime: python
     plan: free
-    buildCommand: apt-get update && apt-get install -y ffmpeg && curl -fsSL https://deno.land/install.sh | sh && pip install --no-cache-dir -r requirements.txt
+    buildCommand: curl -fsSL https://deno.land/install.sh | sh && pip install --no-cache-dir -r requirements.txt
     startCommand: PATH="$HOME/.deno/bin:$PATH" gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 900 --graceful-timeout 30
